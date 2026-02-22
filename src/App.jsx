@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { playStyleSelect, playStyleDeselect, playRoomSelect, playTabSwitch, playGenerate, playSuccess, playError, playUpload } from "./sounds.js";
 
 const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY;
 
@@ -290,11 +291,13 @@ function MakeoverTab({ selectedStyle, accent, styleData }) {
   const handleFile = (file) => {
     setUploadedFile(file); setMakeoverImg(null); setError(null); setRoomAnalysis("");
     setUploadedPreview(URL.createObjectURL(file));
+    playUpload();
   };
 
   const runMakeover = async () => {
     if (!uploadedFile || !selectedStyle) return;
     setLoading(true); setError(null); setMakeoverImg(null); setRoomAnalysis("");
+    playGenerate();
     try {
       setStatus("Analysing your room with GPT-4o Vision...");
       const base64 = await fileToBase64(uploadedFile);
@@ -303,7 +306,8 @@ function MakeoverTab({ selectedStyle, accent, styleData }) {
       setStatus(`Generating ${styleData.label} makeover with DALL E 3 HD...`);
       const url = await generateMakeoverImage(selectedStyle, analysis, styleData.label);
       setMakeoverImg(url); setStatus("");
-    } catch (err) { setError(err.message); setStatus(""); }
+      playSuccess();
+    } catch (err) { setError(err.message); setStatus(""); playError(); }
     finally { setLoading(false); }
   };
 
@@ -392,6 +396,7 @@ export default function App() {
     setLoading(true); setError(null); setIdeas([]); setHeroImg(null);
     setPulse(true); setTimeout(() => setPulse(false), 900);
     setHeroLoading(true);
+    playGenerate();
     generateDalleImage(selectedStyle, roomData.label).then(url => setHeroImg(url)).catch(() => { }).finally(() => setHeroLoading(false));
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -413,8 +418,9 @@ export default function App() {
       const parsed = JSON.parse(match[0]);
       if (!Array.isArray(parsed) || !parsed.length) throw new Error("Empty response");
       setIdeas(parsed);
+      playSuccess();
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
-    } catch (err) { setError(err.message || "Something went wrong."); }
+    } catch (err) { setError(err.message || "Something went wrong."); playError(); }
     finally { setLoading(false); }
   };
 
@@ -455,7 +461,7 @@ export default function App() {
           <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "110px", height: "110px", borderRadius: "50%", background: styleData ? `radial-gradient(circle at 35% 35%, ${accent}30, ${styleData.bg})` : "radial-gradient(circle at 35% 35%, #222018, #0E0C0A)", border: `2px solid ${accent}40`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 5, transition: "all 0.6s ease", animation: selectedStyle ? "glow 3s ease-in-out infinite" : "none", boxShadow: pulse ? `0 0 80px ${accent}99` : `0 0 30px ${accent}30` }}>
             {styleData ? (<><span style={{ fontSize: "30px" }}>{styleData.emoji}</span><span style={{ fontSize: "7px", color: accent, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'DM Sans',sans-serif", textAlign: "center", maxWidth: "82px", lineHeight: 1.3, marginTop: "5px" }}>{styleData.label}</span></>) : (<span style={{ fontSize: "9.5px", color: "#2A2520", textAlign: "center", fontFamily: "'DM Sans',sans-serif", letterSpacing: "0.12em", textTransform: "uppercase", lineHeight: 1.7 }}>SELECT<br />STYLE</span>)}
           </div>
-          {STYLES.map((s, i) => <StyleOrb key={s.id} style={s} isSelected={selectedStyle === s.id} onClick={s => setSelectedStyle(selectedStyle === s.id ? null : s.id)} index={i} total={STYLES.length} />)}
+          {STYLES.map((s, i) => <StyleOrb key={s.id} style={s} isSelected={selectedStyle === s.id} onClick={s => { const isDeselecting = selectedStyle === s.id; setSelectedStyle(isDeselecting ? null : s.id); isDeselecting ? playStyleDeselect() : playStyleSelect(); }} index={i} total={STYLES.length} />)}
         </div>
 
         <div style={{ maxWidth: "680px", margin: "0 auto", padding: "0 20px" }}>
@@ -464,7 +470,7 @@ export default function App() {
             {tabs.map(tab => {
               const active = activeTab === tab.id;
               return (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ flex: 1, padding: "11px 16px", borderRadius: "12px", border: "none", cursor: "pointer", background: active ? `linear-gradient(135deg, ${accent}22, ${accent}0d)` : "transparent", color: active ? accent : "#3A3530", fontSize: "11px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'DM Sans',sans-serif", transition: "all 0.3s", boxShadow: active ? `0 2px 12px ${accent}18` : "none" }}>
+                <button key={tab.id} onClick={() => { if (activeTab !== tab.id) { setActiveTab(tab.id); playTabSwitch(); } }} style={{ flex: 1, padding: "11px 16px", borderRadius: "12px", border: "none", cursor: "pointer", background: active ? `linear-gradient(135deg, ${accent}22, ${accent}0d)` : "transparent", color: active ? accent : "#3A3530", fontSize: "11px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'DM Sans',sans-serif", transition: "all 0.3s", boxShadow: active ? `0 2px 12px ${accent}18` : "none" }}>
                   {tab.label}
                 </button>
               );
@@ -478,7 +484,7 @@ export default function App() {
                 {ROOMS.map(room => {
                   const sel = selectedRoom === room.id;
                   return (
-                    <button key={room.id} onClick={() => setSelectedRoom(sel ? null : room.id)} style={{ background: sel ? `${accent}16` : "rgba(255,255,255,0.025)", border: `1px solid ${sel ? accent + "55" : "rgba(255,255,255,0.06)"}`, borderRadius: "14px", padding: "13px 8px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "7px", transition: "all 0.3s", color: sel ? accent : "#484440", boxShadow: sel ? `0 4px 18px ${accent}20` : "none" }}
+                    <button key={room.id} onClick={() => { setSelectedRoom(sel ? null : room.id); playRoomSelect(); }} style={{ background: sel ? `${accent}16` : "rgba(255,255,255,0.025)", border: `1px solid ${sel ? accent + "55" : "rgba(255,255,255,0.06)"}`, borderRadius: "14px", padding: "13px 8px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "7px", transition: "all 0.3s", color: sel ? accent : "#484440", boxShadow: sel ? `0 4px 18px ${accent}20` : "none" }}
                       onMouseEnter={e => { if (!sel) { e.currentTarget.style.color = "#888"; e.currentTarget.style.background = "rgba(255,255,255,0.05)"; } }}
                       onMouseLeave={e => { if (!sel) { e.currentTarget.style.color = "#484440"; e.currentTarget.style.background = "rgba(255,255,255,0.025)"; } }}>
                       <span style={{ fontSize: "20px" }}>{room.icon}</span>
